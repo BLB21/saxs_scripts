@@ -1,4 +1,4 @@
-#!/anaconda/bin/python
+#!/opt/anaconda3/bin/python
 
 '''
 Created on Apr 18, 2016
@@ -34,6 +34,7 @@ class SaxsCalc():
     '''
     Constructor
     '''
+    __version__ = '1.05b'
     def __init__(self):
         ###start a log file
         self.logger = logging.getLogger('SaxsCalc')
@@ -54,7 +55,7 @@ class SaxsCalc():
         self.number_of_points = 51
         self.subtract_constant = False
         self.chi_score = None
-        self.files_for_deletion = []
+        self.created_files = []
         
     def AddPdbFile(self, pdbfile):
         if os.path.isfile(pdbfile) and pdbfile[-4:] == '.pdb':
@@ -104,11 +105,12 @@ class SaxsCalc():
                     pass
             #find out where its good from
             command = 'autorg '+self.datfile
-            output = check_output(command, shell=True).split('\n')
+            output = check_output(command, shell=True).split('\n'.encode('utf-8'))
             for line in output:
                 if line[:6] == 'Points':
                     try:
                         first_good_point = int(line.split()[1]) - 1
+                        self.logger.info(f'First {first_good_point-1} will be removed')
                     except:
                         self.logger.error('could not determine good points from autorg')
             #write out the good data
@@ -166,12 +168,12 @@ class SaxsCalc():
 
     def DeleteFiles(self):
         self.logger.info('Deleting output files')
-        for file in self.files_for_deletion:
+        for file in self.created_files:
             os.remove(file)
 
     def PlotTheFit(self, outfile=False):
         self.logger.info('Plotting the data')
-        fig = plt.figure()
+        fig = plt.figure(figsize=(10,6), dpi= 100, facecolor='w', edgecolor='k')
         ax1 = fig.add_subplot(111, autoscale_on=True)
         ax1.plot(self.datdata['Q'], self.datdata['DATA'], marker='.', color='0.55', markersize = 4.0, linestyle='None')
         ax1.plot(self.datdata['Q'], self.datdata['FIT'], marker='None', color='0', linewidth=2.0, linestyle='-')
@@ -202,44 +204,59 @@ class SaxsCalc():
             return False
         else:
             command = command + str(self.pdbfile)
+            os.chdir(os.path.split(os.path.abspath(self.pdbfile))[0])
 
         if self.datfile:
             command = command +' '+str(self.datfile)
 
         filelist_before = os.listdir(os.getcwd())
         output = check_output(command, shell=True, stderr=STDOUT)
-        filelist_after = os.listdir(os.getcwd())
-        self.files_for_deletion = self.files_for_deletion + list(set(filelist_after) - set(filelist_before))
 
-        output = output.split('\n')
-        pattern = re.compile('.* Chi = .*')
+        filelist_after = os.listdir(os.getcwd())
+        self.created_files = self.created_files + list(set(filelist_after) - set(filelist_before))
+
+        output = output.split('\n'.encode('utf-8'))
+        self.output = output
+        pattern = re.compile('.* Chi\^2 = .*'.encode('utf-8'))
         for line in output:
             if re.match(pattern, line):
                 line = line.split()
                 try:
-                    self.chi_score = "%.3f" % (float(line[line.index('=')+1]))
+                    self.chi_score = "%.3f" % (float(line[line.index('='.encode('utf-8'))+1]))
                 except:
                     self.logger.error('Could not find chi in the foxs output')
                     self.chi_score = "****"
         if self.datfile:
             #PARSE THE FIT FILE
-            fitfile = self.pdbfile[:-4]+'_'+self.datfile
-            with open(fitfile) as f:
-                filedata = f.readlines()
-            for line in filedata:
-                line = line.rsplit()
-                try:
-                    self.datdata['Q'].append(float(line[0]))
-                    self.datdata['DATA'].append(float(line[1]))
-                    self.datdata['FIT'].append(float(line[2]))
-                except:
-                    pass
+            pattern = re.compile('.*fit')
+            fitfile = False
+            for f in self.created_files:
+                if re.match(pattern, f):
+                    fitfile = f
+            if not fitfile:
+                fs = sorted(os.listdir(os.getcwd()), key=os.path.getctime)
+                fs.reverse()
+                for f in fs:
+                    if re.match(pattern, f):
+                        fitfile = f
+                        break
+            if fitfile:
+                with open(fitfile) as f:
+                    filedata = f.readlines()
+                for line in filedata:
+                    line = line.rsplit()
+                    try:
+                        self.datdata['Q'].append(float(line[0]))
+                        self.datdata['DATA'].append(float(line[1]))
+                        self.datdata['FIT'].append(float(line[3]))
+                    except:
+                        pass
                 
-            #TEST THE OUTPUT
-            if len(self.datdata['Q']) > 0:
-                return True
-            else:
-                return False
+        #TEST THE OUTPUT
+        if len(self.datdata['Q']) > 0:
+            return True
+        else:
+            return False
 
 
         
@@ -268,20 +285,21 @@ class SaxsCalc():
         filelist_before = os.listdir(os.getcwd())
         output = check_output(command, shell=True)
         filelist_after = os.listdir(os.getcwd())
-        self.files_for_deletion = self.files_for_deletion + list(set(filelist_after) - set(filelist_before))
+        self.created_files = self.created_files + list(set(filelist_after) - set(filelist_before))
 
         if self.datfile:
             #PARSE THE CRYSOL OUTPUT
-            output = output.split('\n')
+            output = output.split('\n'.encode('utf-8'))
+            self.output = output            
             try:
-                index = [i for i, item in enumerate(output) if re.search('.*Chi.*', item)][-1]
-                self.chi_score = "%.3f" % (float(output[index].split(':')[-1]))
+                index = [i for i, item in enumerate(output) if re.search('.*Chi.*'.encode('utf-8'), item)][-1]
+                self.chi_score = "%.3f" % (float(output[index].split(':'.encode('utf-8'))[-1]))
             except:
                 self.logger.error('Could not find chi in the crysol output')
                 self.chi_score = "****"
     
             #PARSE THE FIT FILE
-            fitfile = [ m for m in self.files_for_deletion if m[-4:] == '.fit'][0]
+            fitfile = [ m for m in self.created_files if m[-4:] == '.fit'][0]
             with open(fitfile) as f:
                 filedata = f.readlines()
             for line in filedata:
@@ -360,4 +378,4 @@ if __name__ == '__main__':
                 job.PlotTheFit(options.outfile)
             else:
                 job.logger.info('No plot requested')
-            print job.ReturnPdbFile()+' vs '+job.ReturnDatFileName()+': '+str(job.OutputChiScore())
+            print(f'{job.ReturnPdbFile()} vs {job.ReturnDatFileName()}: {job.OutputChiScore()}')

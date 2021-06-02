@@ -1,4 +1,4 @@
-#!/anaconda/bin/python
+#!/opt/anaconda3/bin/python
 '''
 Created on Jul 31, 2014
 
