@@ -5,7 +5,7 @@ Created on Jun 03, 2021
 @author: nathan
 '''
 
-
+import code
 import logging
 import sys
 from optparse import OptionParser
@@ -65,7 +65,7 @@ if __name__ == '__main__':
 
     parser = OptionParser()
     required = OptionGroup(parser, "Required Arguments")
-    required.add_option("-s", "--my_string", action="store", type="string", dest="a_string", help="An essential command line variable stored as a string (default = my string)") #A STRING
+    required.add_option("-s", "--my_string", action="store", type="string", dest="a_string", help="An essential command line variable stored as a string (no default, a required argument).") #A STRING
 
     optional = OptionGroup(parser, "Optional Arguments")
     optional.add_option("-f", "--my_float", action="store", type="float", dest="a_float", default=1.0, help="An optional command line variable stored as a float (default 1.0)") #A FLOAT
@@ -76,8 +76,12 @@ if __name__ == '__main__':
     parser.add_option_group(required)
     parser.add_option_group(optional)
     (options, args) = parser.parse_args()
+    if not options.a_string:
+        sys.exit('Useage: Template.py -s mystring')
 
     job = Demo(options.a_string)
+    
+    code.interact(local=locals()) #FOR DEBUGGING, break into script at this point and enter interactive console
 
     if options.verbose:
         job.set_log_level(logging.DEBUG)
